@@ -3,6 +3,11 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+glew-2.2.0/
+glm-0.9.9.7/
+SFML-2.6.0/
+
+
 # User-specific files
 *.rsuser
 *.suo
