@@ -38,6 +38,11 @@ void main()
 }
 )glsl";
 
+enum Mode
+{
+    POLYGON, 
+    CUBE
+};
 
 bool checkShaders(GLuint shader, const std::string& type)
 {
@@ -58,7 +63,6 @@ bool checkShaders(GLuint shader, const std::string& type)
         return true;
     }
 }
-
 
 GLfloat* generatePolygon(int N, float r, float z = 0.0f)
 {
@@ -115,8 +119,6 @@ GLfloat* generatePolygon(int N, float r, float z = 0.0f)
     return vertices;
 }
 
-
-
 int main()
 {
     sf::ContextSettings settings;
@@ -125,6 +127,8 @@ int main()
 
     int points = 6;
     int oldPosY = 0;
+    // CUBE POLYGON
+    Mode currentMode = CUBE;
     GLenum prymityw = GL_TRIANGLE_FAN;
 
     // Okno renderingu
@@ -134,45 +138,77 @@ int main()
     glewExperimental = GL_TRUE;
     glewInit();
 
+    // W³¹czenie z-bufora
     glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
 
-    // Utworzenie VAO (Vertex Array Object)
-    GLuint vao;
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-
-    // Utworzenie VBO (Vertex Buffer Object)
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
+    // Utworzenie VAO i VBO dla wielok¹ta i szeœcianu (Vertex Array/Buffer Object)
+    GLuint vaoPolygon, vboPolygon, vaoCube, vboCube;
+    glGenVertexArrays(1, &vaoPolygon);
+    glGenBuffers(1, &vboPolygon);
+    glGenVertexArrays(1, &vaoCube);
+    glGenBuffers(1, &vboCube);
 
     // Wygenerowanie pocz¹tkowego wielok¹ta
     GLfloat* vertices = generatePolygon(points, 1.0f);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * (points + 2) * 6, vertices, GL_STATIC_DRAW);
 
-    // Utworzenie i skompilowanie shaderów
+    // Wierzcho³ki dla szeœcianu
+    float verticesCube[] =
+    {
+    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,
+    0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
+    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
+    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.0f,
+    -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
+    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
+    -0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
+    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
+    0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+    0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+    0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+    0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
+    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
+    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
+    -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
+    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f
+    };
+
+    // Przesy³anie wierzcho³ków szeœcianu do VBO
+    glBindVertexArray(vaoCube);
+    glBindBuffer(GL_ARRAY_BUFFER, vboCube);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(verticesCube), verticesCube, GL_STATIC_DRAW);
+
+    // Kompilacja shaderów
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertexSource, NULL);
     glCompileShader(vertexShader);
-    //checkShaders(vertexShader, "Vertex Shader");
-
-    if (!checkShaders(vertexShader, "Vertex shader"))
-    {
-        return 1;
-    }
-
+    if (!checkShaders(vertexShader, "Vertex shader")) return 1;
 
     GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
     glCompileShader(fragmentShader);
-   /// checkShaders(fragmentShader, "Fragment Shader");
+    if (!checkShaders(fragmentShader, "Fragment shader")) return 1;
 
-    if (!checkShaders(fragmentShader, "Fragment Shader"))
-    {
-        return 1;
-    }
-
-    // Zlinkowanie shaderów
     GLuint shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
@@ -180,40 +216,16 @@ int main()
     glLinkProgram(shaderProgram);
     glUseProgram(shaderProgram);
 
-    // Specyfikacja formatu danych wierzcho³kowych
+    // Pobieranie atrybutów dla pozycji i koloru
     GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
-    glEnableVertexAttribArray(posAttrib);
-    glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), 0);
     GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
-    glEnableVertexAttribArray(colAttrib);
-    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 
-    // Deklaracja zmiennych zwi¹zanych z kamer¹
+    // Utworzenie zmiennych do ustawienia kamery
     glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
     glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
     glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
-
     float cameraSpeed = 0.05f;
     float obrot = 0.0f;
-
-
-    // Macierz modelu
-    glm::mat4 model = glm::mat4(1.0f);
-    model = glm::rotate(model, glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    GLint uniModel = glGetUniformLocation(shaderProgram, "model");
-    glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-
-
-    // Macierz widoku
-    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
-    view = glm::lookAt
-       (glm::vec3(0.0f, 0.0f, 3.0f),
-        glm::vec3(0.0f, 0.0f, 0.0f),
-        glm::vec3(0.0f, 1.0f, 0.0f));
-
-    GLint uniView = glGetUniformLocation(shaderProgram, "view");
-    glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
-
 
     // Macierz projekcji
     glm::mat4 proj = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
@@ -221,140 +233,173 @@ int main()
     glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
 
 
-
-    // Rozpoczêcie pêtli zdarzeñ
     bool running = true;
+    points = 6;
+    prymityw = GL_TRIANGLE_FAN;
+    oldPosY = 0;
+
     while (running)
     {
         sf::Event windowEvent;
         while (window.pollEvent(windowEvent))
         {
-            switch (windowEvent.type)
+            if (windowEvent.type == sf::Event::Closed)
             {
-            case sf::Event::Closed:
                 running = false;
-                break;
-
-            case sf::Event::KeyPressed:
-                switch (windowEvent.key.code)
+            }
+            else if (windowEvent.type == sf::Event::KeyPressed)
+            {
+                if (windowEvent.key.code == sf::Keyboard::Escape) 
                 {
-                case sf::Keyboard::Escape:
                     running = false;
-                    break;
-
-                case sf::Keyboard::Num1:
-                    prymityw = GL_LINES;
-                    break;
-
-                case sf::Keyboard::Num2:
-                    prymityw = GL_POINTS;
-                    break;
-
-                case sf::Keyboard::Num3:
-                    prymityw = GL_TRIANGLE_FAN;
-                    break;
-
-                case sf::Keyboard::Num4:
-                    prymityw = GL_LINE_STRIP;
-                    break;
-
-                case sf::Keyboard::Num5:
-                    prymityw = GL_LINE_LOOP;
-                    break;
-
-                case sf::Keyboard::Num6:
-                    prymityw = GL_TRIANGLES;
-                    break;
-
-                case sf::Keyboard::Num7:
-                    prymityw = GL_TRIANGLE_STRIP;
-                    break;
-
-                case sf::Keyboard::Num8:
-                    prymityw = GL_QUADS;
-                    break;
-
-                case sf::Keyboard::Num9:
-                    prymityw = GL_QUAD_STRIP;
-                    break;
-
-                case sf::Keyboard::Num0:
-                    prymityw = GL_POLYGON;
-                    break;
-
-                case sf::Keyboard::W:
-                    cameraPos += cameraSpeed * cameraFront;
-                    break;
-
-                case sf::Keyboard::S:
-                    cameraPos -= cameraSpeed * cameraFront;
-                    break;
-
-                case sf::Keyboard::A:
-                    cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-                    break;
-
-                case sf::Keyboard::D:
-                    cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-                    break;
-                /*case sf::Keyboard::Q:
-                    obrot += 0.05f;
-                    cameraFront.x = sin(obrot);
-                    cameraFront.z = -cos(obrot);
-                    cameraFront = glm::normalize(cameraFront);
-                    break;
-
-                case sf::Keyboard::E:
-                    obrot -= 0.05f;
-                    cameraFront.x = sin(obrot);
-                    cameraFront.z = -cos(obrot);
-                    cameraFront = glm::normalize(cameraFront);
-                    break;*/
                 }
-                break;
+                else if (windowEvent.key.code == sf::Keyboard::Space)
+                {
+                    currentMode = (currentMode == CUBE) ? POLYGON : CUBE;
+                }
 
-            case sf::Event::MouseMoved:
-                if (windowEvent.mouseMove.y > oldPosY)
+                if (currentMode == POLYGON)
+                {
+                    switch (windowEvent.key.code)
+                    {
+                    case sf::Keyboard::Num1:
+                        prymityw = GL_POINTS;
+                        break;
+                    case sf::Keyboard::Num2:
+                        prymityw = GL_LINES;
+                        break;
+                    case sf::Keyboard::Num3:
+                        prymityw = GL_LINE_STRIP;
+                        break;
+                    case sf::Keyboard::Num4:
+                        prymityw = GL_LINE_LOOP;
+                        break;
+                    case sf::Keyboard::Num5:
+                        prymityw = GL_TRIANGLES;
+                        break;
+                    case sf::Keyboard::Num6:
+                        prymityw = GL_TRIANGLE_STRIP;
+                        break;
+                    case sf::Keyboard::Num7:
+                        prymityw = GL_TRIANGLE_FAN;
+                        break;
+                    case sf::Keyboard::Num8:
+                        prymityw = GL_QUADS;
+                        break;
+                    case sf::Keyboard::Num9:
+                        prymityw = GL_POLYGON;
+                        break;
+                    default:
+                        break;
+                    }
+                }
+                else if (currentMode == CUBE)
+                {
+                    if (windowEvent.key.code == sf::Keyboard::W) 
+                    {
+                        cameraPos += cameraSpeed * cameraFront;
+                    }
+                    else if (windowEvent.key.code == sf::Keyboard::S) 
+                    {
+                        cameraPos -= cameraSpeed * cameraFront;
+                    }
+                    else if (windowEvent.key.code == sf::Keyboard::A) 
+                    {
+                        obrot -= cameraSpeed * 50.0f;
+                    }
+                    else if (windowEvent.key.code == sf::Keyboard::D) 
+                    {
+                        obrot += cameraSpeed * 50.0f;
+                    }
+                }
+            }
+
+            else if (windowEvent.type == sf::Event::MouseMoved && currentMode == POLYGON)
+            {
+                if (windowEvent.mouseMove.y > oldPosY) 
                 {
                     points = std::min(points + 1, 20);
                 }
-                else if (windowEvent.mouseMove.y < oldPosY)
+                else if (windowEvent.mouseMove.y < oldPosY) 
                 {
                     points = std::max(points - 1, 3);
                 }
-                oldPosY = windowEvent.mouseMove.y;
 
+                oldPosY = windowEvent.mouseMove.y;
                 delete[] vertices;
                 vertices = generatePolygon(points, 1.0f);
 
-                glBindBuffer(GL_ARRAY_BUFFER, vbo);
+                glBindVertexArray(vaoPolygon);
+                glBindBuffer(GL_ARRAY_BUFFER, vboPolygon);
                 glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * (points + 2) * 6, vertices, GL_STATIC_DRAW);
-                break;
             }
         }
 
-        // Nadanie scenie koloru czarnego
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-
-
-        view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+        // Macierz widoku
+        glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+        GLint uniView = glGetUniformLocation(shaderProgram, "view");
         glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
-        glDrawArrays(prymityw, 0, points + 2);
+        if (currentMode == CUBE) 
+        {
+            // Macierz modelu (obrót wokó³ osi OY)
+            glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(obrot), glm::vec3(0.0f, 1.0f, 0.0f));
 
-        // Wymiana buforów tylni/przedni
+            // Wys³anie do shadera
+            GLint uniTrans = glGetUniformLocation(shaderProgram, "model");
+            glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
+
+            glBindVertexArray(vaoCube);
+
+            // W³¹czenie atrybutu pozycji wierzcho³ka
+            glEnableVertexAttribArray(posAttrib);
+            glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), 0);
+
+            // W³¹czenie atrybutu koloru
+            glEnableVertexAttribArray(colAttrib);
+            glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+
+            // Renderowanie szeœcianu jako zbiór trójk¹tów
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+        else if (currentMode == POLYGON) 
+        {
+            // Maicerz modelu (jednostkowa)
+            glm::mat4 model = glm::mat4(1.0f);
+
+            // Wys³anie do shadera
+            GLint uniTrans = glGetUniformLocation(shaderProgram, "model");
+            glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
+
+            // Ustawienie VAO
+            glBindVertexArray(vaoPolygon);
+
+            // W³¹czenie atrybutu pozycji wierzcho³ka
+            glEnableVertexAttribArray(posAttrib);
+            glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), 0);
+
+            // W³¹czenie atrybutu koloru
+            glEnableVertexAttribArray(colAttrib);
+            glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+
+            // Renderowanie wielok¹ta w zadanym trybie
+            glDrawArrays(prymityw, 0, points + 2);
+        }
+
         window.display();
     }
 
-    // Kasowanie programu i czyszczenie buforów
     glDeleteProgram(shaderProgram);
     glDeleteShader(fragmentShader);
     glDeleteShader(vertexShader);
-    glDeleteBuffers(1, &vbo);
-    glDeleteVertexArrays(1, &vao);
-    // Zamkniêcie okna renderingu
+    glDeleteBuffers(1, &vboCube);
+    glDeleteBuffers(1, &vboPolygon);
+    glDeleteVertexArrays(1, &vaoCube);
+    glDeleteVertexArrays(1, &vaoPolygon);
+    delete[] vertices;
     window.close();
     return 0;
 }
