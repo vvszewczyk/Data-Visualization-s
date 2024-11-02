@@ -311,6 +311,14 @@ int main()
                     {
                         obrot += cameraSpeed * 50.0f;
                     }
+                    else if (windowEvent.key.code == sf::Keyboard::Q)
+                    {
+                        cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+                    }
+                    else if (windowEvent.key.code == sf::Keyboard::E)
+                    {
+                        cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+                    }
                 }
             }
 
@@ -345,8 +353,8 @@ int main()
 
         if (currentMode == CUBE) 
         {
-            // Macierz modelu (obrót wokó³ osi OY)
-            glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(obrot), glm::vec3(0.0f, 1.0f, 0.0f));
+            // Macierz modelu                                                              x     y     z
+            glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(obrot), glm::vec3(1.0f, 2.0f, 3.0f));
 
             // Wys³anie do shadera
             GLint uniTrans = glGetUniformLocation(shaderProgram, "model");
