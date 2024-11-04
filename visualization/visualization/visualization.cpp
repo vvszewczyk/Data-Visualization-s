@@ -232,7 +232,6 @@ int main()
     GLint uniProj = glGetUniformLocation(shaderProgram, "proj");
     glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
 
-
     bool running = true;
     points = 6;
     prymityw = GL_TRIANGLE_FAN;
@@ -354,7 +353,7 @@ int main()
         if (currentMode == CUBE) 
         {
             // Macierz modelu                                                              x     y     z
-            glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(obrot), glm::vec3(1.0f, 2.0f, 3.0f));
+            glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(obrot), glm::vec3(0.0f, 1.0f, 0.0f));
 
             // Wys³anie do shadera
             GLint uniTrans = glGetUniformLocation(shaderProgram, "model");
