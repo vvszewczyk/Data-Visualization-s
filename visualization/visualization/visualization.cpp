@@ -38,6 +38,16 @@ void main()
 }
 )glsl";
 
+// Utworzenie zmiennych do ustawienia kamery
+glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
+glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+float yaw = -90.0f;
+float pitch = 0.0f;
+float sensitivity = 0.1f;
+float lastX = 400, lastY = 300;
+bool firstMouse = true;
+
 enum Mode
 {
     POLYGON, 
@@ -119,6 +129,86 @@ GLfloat* generatePolygon(int N, float r, float z = 0.0f)
     return vertices;
 }
 
+void ustawKamereMysz(GLint uniView, float deltaTime, sf::Window& window) 
+{
+    sf::Vector2i localPosition = sf::Mouse::getPosition(window);
+
+    if (firstMouse)
+    {
+        lastX = localPosition.x;
+        lastY = localPosition.y;
+        firstMouse = false;
+    }
+
+    // Obliczenie przesuniêcia myszy
+    float xoffset = localPosition.x - lastX;
+    float yoffset = lastY - localPosition.y; // odwrotnie, aby poruszanie w górê by³o dodatnie
+    lastX = localPosition.x;
+    lastY = localPosition.y;
+
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+
+    // Aktualizacja k¹tów obrotu kamery
+    yaw += xoffset;
+    pitch += yoffset;
+
+    // Ograniczenie k¹ta nachylenia w pionie
+    if (pitch > 89.0f) pitch = 89.0f;
+    if (pitch < -89.0f) pitch = -89.0f;
+
+    // Obliczanie nowego kierunku patrzenia
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(pitch));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraFront = glm::normalize(front);
+
+    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+    glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
+}
+
+void ustawKamereKlawisze(GLint uniView, float deltaTime) 
+{
+    float cameraSpeed = 0.5f * deltaTime;
+
+    // Poruszanie w przód i w ty³
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
+        cameraPos += cameraSpeed * cameraFront;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::S))
+        cameraPos -= cameraSpeed * cameraFront;
+
+    // Poruszanie w lewo i w prawo
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::A))
+        cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
+        cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+
+    // Poruszanie w górê i w dó³
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Q))
+        cameraPos += cameraSpeed * cameraUp;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::E))
+        cameraPos -= cameraSpeed * cameraUp;
+
+    // Obrót wokó³ osi Y
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left))
+        yaw -= sensitivity * deltaTime * 50.0f; // Obrót w lewo
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right))
+        yaw += sensitivity * deltaTime * 50.0f; // Obrót w prawo
+
+    // Aktualizacja kierunku frontu patrzenia
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(pitch));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraFront = glm::normalize(front);
+
+    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+    glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
+}
+
+
+
 int main()
 {
     sf::ContextSettings settings;
@@ -133,6 +223,11 @@ int main()
 
     // Okno renderingu
     sf::Window window(sf::VideoMode(800, 600, 32), "OpenGL", sf::Style::Titlebar | sf::Style::Close, settings);
+    window.setFramerateLimit(20);
+    window.setMouseCursorGrabbed(true);
+    window.setMouseCursorVisible(false);
+    //window.setKeyRepeatEnabled(false);
+
 
     // Inicjalizacja GLEW
     glewExperimental = GL_TRUE;
@@ -219,11 +314,7 @@ int main()
     // Pobieranie atrybutów dla pozycji i koloru
     GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
     GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
-
-    // Utworzenie zmiennych do ustawienia kamery
-    glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
-    glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
-    glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+    
     float cameraSpeed = 0.05f;
     float obrot = 0.0f;
 
@@ -237,8 +328,25 @@ int main()
     prymityw = GL_TRIANGLE_FAN;
     oldPosY = 0;
 
+    GLint uniView = glGetUniformLocation(shaderProgram, "view");
+
+    sf::Clock clock;
+    float deltaTime; // przechowuje czas w sekundach jaki up³yn¹³ od ostatniego odœwie¿enia klatki
+
     while (running)
     {
+        deltaTime = clock.restart().asSeconds(); // reset zegara i zwracanie czasu od ostatniego resetu
+
+        static int frameCount = 0;
+        static sf::Clock fpsClock;
+        frameCount++;
+        if (fpsClock.getElapsedTime().asSeconds() >= 1.0f)
+        {
+            window.setTitle("OpenGL - FPS: " + std::to_string(frameCount));
+            frameCount = 0;
+            fpsClock.restart();
+        }
+
         sf::Event windowEvent;
         while (window.pollEvent(windowEvent))
         {
@@ -294,30 +402,7 @@ int main()
                 }
                 else if (currentMode == CUBE)
                 {
-                    if (windowEvent.key.code == sf::Keyboard::W) 
-                    {
-                        cameraPos += cameraSpeed * cameraFront;
-                    }
-                    else if (windowEvent.key.code == sf::Keyboard::S) 
-                    {
-                        cameraPos -= cameraSpeed * cameraFront;
-                    }
-                    else if (windowEvent.key.code == sf::Keyboard::A) 
-                    {
-                        obrot -= cameraSpeed * 50.0f;
-                    }
-                    else if (windowEvent.key.code == sf::Keyboard::D) 
-                    {
-                        obrot += cameraSpeed * 50.0f;
-                    }
-                    else if (windowEvent.key.code == sf::Keyboard::Q)
-                    {
-                        cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-                    }
-                    else if (windowEvent.key.code == sf::Keyboard::E)
-                    {
-                        cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-                    }
+
                 }
             }
 
@@ -350,11 +435,14 @@ int main()
         GLint uniView = glGetUniformLocation(shaderProgram, "view");
         glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
+        ustawKamereMysz(uniView, deltaTime, window); // Ustawienie widoku kamery na podstawie ruchu myszy
+        ustawKamereKlawisze(uniView, deltaTime);     // Obs³uga klawiszy do poruszania siê
+
         if (currentMode == CUBE) 
         {
             // Macierz modelu                                                              x     y     z
             glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(obrot), glm::vec3(0.0f, 1.0f, 0.0f));
-
+            
             // Wys³anie do shadera
             GLint uniTrans = glGetUniformLocation(shaderProgram, "model");
             glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
