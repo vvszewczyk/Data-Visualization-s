@@ -1,5 +1,6 @@
 //#include "stdafx.h"
 #define _USE_MATH_DEFINES
+#define STB_IMAGE_IMPLEMENTATION
 #include <cmath>
 #include <GL/glew.h>
 #include <SFML/Window.hpp>
@@ -7,22 +8,29 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include "stb_image.h"
 
 // Kody shaderów
 const GLchar* vertexSource = R"glsl(
 #version 150 core
 in vec3 position;
 in vec3 color;
+in vec2 aTexCoord;
+
 out vec3 Color;
+out vec2 TexCoord;
 
 // Macierz modelu, widoku, projekcji
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 proj;
 
+
+
 void main()
 {
     Color = color;
+    TexCoord = aTexCoord;
     // Okreœlenie po³o¿enia punktów
     gl_Position = proj * view * model * vec4(position, 1.0); //gl_Position = vec4(position, 1.0); //gl_Position = vec4(position, 0.0, 1.0);
 }
@@ -31,10 +39,14 @@ void main()
 const GLchar* fragmentSource = R"glsl(
 #version 150 core
 in vec3 Color;
+in vec2 TexCoord;
 out vec4 outColor;
+
+uniform sampler2D texture1;
+
 void main()
 {
-    outColor = vec4(Color, 1.0);
+    outColor = texture(texture1, TexCoord);
 }
 )glsl";
 
@@ -168,6 +180,7 @@ void ustawKamereMysz(GLint uniView, float deltaTime, sf::Window& window)
     glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 }
 
+
 void ustawKamereKlawisze(GLint uniView, float deltaTime) 
 {
     float cameraSpeed = 0.5f * deltaTime;
@@ -223,7 +236,7 @@ int main()
 
     // Okno renderingu
     sf::Window window(sf::VideoMode(800, 600, 32), "OpenGL", sf::Style::Titlebar | sf::Style::Close, settings);
-    window.setFramerateLimit(20);
+    window.setFramerateLimit(360);
     window.setMouseCursorGrabbed(true);
     window.setMouseCursorVisible(false);
     //window.setKeyRepeatEnabled(false);
@@ -247,45 +260,74 @@ int main()
     // Wygenerowanie pocz¹tkowego wielok¹ta
     GLfloat* vertices = generatePolygon(points, 1.0f);
 
+    unsigned int texture1;
+    glGenTextures(1, &texture1);
+    glBindTexture(GL_TEXTURE_2D, texture1);
+
+    // Parametry tekstury
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    int width, height, nrChannels;
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* data = stbi_load("icecube.jpg", &width, &height, &nrChannels, 0);
+    if (data)
+    {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    else
+    {
+        std::cout << "Failed to load texture" << std::endl;
+    }
+    stbi_image_free(data);
+
     // Wierzcho³ki dla szeœcianu
     float verticesCube[] =
     {
-    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,
-    0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
-    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
-    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.0f,
-    -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f,
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
-    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
-    -0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
-    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
-    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
-    0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-    0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-    0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
-    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-    0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
-    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
-    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
-    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,
-    -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 0.0f,
-    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f
+    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,  0.0f, 0.0f,
+    0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f,   1.0f, 0.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,    1.0f, 1.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,    1.0f, 1.0f,
+    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,  0.0f, 0.0f,
+
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,    1.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.0f,     1.0f, 1.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.0f,     1.0f, 1.0f,
+    -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f,    0.0f, 1.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+
+    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+    -0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,  1.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,  0.0f, 1.0f,
+    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,  1.0f, 0.0f,
+    0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+    0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+    0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,  0.0f, 1.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,  0.0f, 0.0f,
+    0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 0.0f,   1.0f, 0.0f,
+    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,    1.0f, 1.0f,
+    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,    1.0f, 1.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,   0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,  0.0f, 0.0f,
+
+    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,  0.0f, 0.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,   1.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,    1.0f, 1.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,    1.0f, 1.0f,
+    -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 0.0f,   0.0f, 1.0f,
+    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,  0.0f, 0.0f
     };
 
     // Przesy³anie wierzcho³ków szeœcianu do VBO
@@ -324,7 +366,7 @@ int main()
     glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
 
     bool running = true;
-    points = 6;
+    points = 8;
     prymityw = GL_TRIANGLE_FAN;
     oldPosY = 0;
 
@@ -423,7 +465,7 @@ int main()
 
                 glBindVertexArray(vaoPolygon);
                 glBindBuffer(GL_ARRAY_BUFFER, vboPolygon);
-                glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * (points + 2) * 6, vertices, GL_STATIC_DRAW);
+                glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * (points + 2) * 8, vertices, GL_STATIC_DRAW);
             }
         }
 
@@ -451,13 +493,19 @@ int main()
 
             // W³¹czenie atrybutu pozycji wierzcho³ka
             glEnableVertexAttribArray(posAttrib);
-            glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), 0);
+            glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), 0);
 
             // W³¹czenie atrybutu koloru
             glEnableVertexAttribArray(colAttrib);
-            glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+            glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+
+            // W³¹czenie wspó³rzêdnych tekstury
+            GLint texAttrib = glGetAttribLocation(shaderProgram, "aTexCoord");
+            glEnableVertexAttribArray(texAttrib);
+            glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
 
             // Renderowanie szeœcianu jako zbiór trójk¹tów
+            glBindTexture(GL_TEXTURE_2D, texture1);
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
         else if (currentMode == POLYGON) 
