@@ -16,9 +16,12 @@ const GLchar* vertexSource = R"glsl(
 in vec3 position;
 in vec3 color;
 in vec2 aTexCoord;
+in vec3 aNormal;
 
 out vec3 Color;
 out vec2 TexCoord;
+out vec3 Normal;
+out vec3 FragPos;
 
 // Macierz modelu, widoku, projekcji
 uniform mat4 model;
@@ -26,13 +29,14 @@ uniform mat4 view;
 uniform mat4 proj;
 
 
-
 void main()
 {
+    Normal = aNormal;
     Color = color;
     TexCoord = aTexCoord;
+    FragPos = vec3(model * vec4(position, 1.0));
     // Okreœlenie po³o¿enia punktów
-    gl_Position = proj * view * model * vec4(position, 1.0); //gl_Position = vec4(position, 1.0); //gl_Position = vec4(position, 0.0, 1.0);
+    gl_Position = proj * view * model * vec4(position, 1.0); 
 }
 )glsl";
 
@@ -40,14 +44,94 @@ const GLchar* fragmentSource = R"glsl(
 #version 150 core
 in vec3 Color;
 in vec2 TexCoord;
+in vec3 Normal;
+in vec3 FragPos;
 out vec4 outColor;
 
 uniform sampler2D texture1;
+uniform int lightingType; // 0: Directional, 1: Point, 2: Spotlight
+uniform bool lightingEnabled;
+
+// Wspólne zmienne dla œwiate³
+uniform vec3 lightPos;   // Pozycja dla Point/Spotlight
+uniform vec3 lightDir;   // Kierunek dla Directional/Spotlight
+uniform vec3 viewPos;    // Pozycja kamery (do specular)
+uniform vec3 lightColor = vec3(1.0, 1.0, 1.0); // Kolor œwiat³a
+
+// Parametry t³umienia (dla Point/Spotlight)
+uniform float constant = 1.0;
+uniform float linear = 0.09;
+uniform float quadratic = 0.032;
+
+// Parametry dla reflektora
+uniform float cutoff = 12.5;
+uniform float outerCutoff = 15.0;
+
+// Parametry oœwietlenia
+uniform float ambientStrength = 0.1;
+uniform float diffuseStrength = 1.0;
+uniform float specularStrength = 0.5;
+uniform float shininess = 32.0;
 
 void main()
 {
-    outColor = texture(texture1, TexCoord);
+    if (!lightingEnabled) 
+    {
+        outColor = texture(texture1, TexCoord);
+        return;
+    }
+
+    vec3 ambient = ambientStrength * lightColor; // Ambient - wspólne dla wszystkich
+
+    vec3 norm = normalize(Normal); // Normalizacja normalnej
+    vec3 lightDirection;
+    float attenuation = 1.0;      // T³umienie, domyœlnie brak
+    float spotlightEffect = 1.0;  // Efekt sto¿ka reflektora, domyœlnie brak
+
+    if (lightingType == 0) // Œwiat³o kierunkowe
+    {
+        lightDirection = normalize(-lightDir);
+    }
+    else if (lightingType == 1 || lightingType == 2) // Punktowe lub reflektor
+    {
+        lightDirection = normalize(lightPos - FragPos);
+
+        // Obliczenie t³umienia dla œwiat³a punktowego
+        float distance = length(lightPos - FragPos);
+        attenuation = 1.0 / (constant + linear * distance + quadratic * distance * distance);
+    }
+
+    if (lightingType == 2) // Reflektor
+    {
+        float theta = dot(lightDirection, normalize(-lightDir)); // K¹t miêdzy kierunkiem œwiat³a a obiektem
+        if(theta > cutoff)
+        {
+            float epsilon = cos(radians(cutoff)) - cos(radians(outerCutoff));
+            spotlightEffect = clamp((theta - cos(radians(outerCutoff))) / epsilon, 0.0, 1.0);
+            attenuation *= spotlightEffect;
+        }
+        else
+        {
+            attenuation = 0.0;
+        }
+    }
+
+    // Diffuse
+    float diff = max(dot(norm, lightDirection), 0.0);
+    vec3 diffuse = diffuseStrength * diff * lightColor;
+
+    // Specular
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDirection, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
+    vec3 specular = specularStrength * spec * lightColor;
+
+    // Po³¹czenie wszystkich komponentów
+    vec3 lighting = ambient + attenuation * spotlightEffect * (diffuse + specular);
+
+    outColor = vec4(lighting, 1.0) * texture(texture1, TexCoord);
 }
+
 )glsl";
 
 // Utworzenie zmiennych do ustawienia kamery
@@ -59,12 +143,6 @@ float pitch = 0.0f;
 float sensitivity = 0.1f;
 float lastX = 400, lastY = 300;
 bool firstMouse = true;
-
-enum Mode
-{
-    POLYGON, 
-    CUBE
-};
 
 bool checkShaders(GLuint shader, const std::string& type)
 {
@@ -84,61 +162,6 @@ bool checkShaders(GLuint shader, const std::string& type)
         std::cout << "Compilation of " << type << " OK" << std::endl;
         return true;
     }
-}
-
-GLfloat* generatePolygon(int N, float r, float z = 0.0f)
-{
-    const int elementsPerVertex = 6; // (x, y ,z, r, g, b)
-    const int totalVertices = N + 2; // N wierzcho³ków + 1 œrodokowy + 1 ostatni do zamkniêcia w miejscu pierwszego
-    GLfloat* vertices = new GLfloat[totalVertices * elementsPerVertex];
-
-    // Wierzcho³ek centralny (œrodek)
-    int index = 0;
-    vertices[index++] = 0.0f; // x
-    vertices[index++] = 0.0f; // y
-    vertices[index++] = z;    // z
-    vertices[index++] = 1.0f; // r
-    vertices[index++] = 1.0f; // g
-    vertices[index++] = 1.0f; // b
-
-    float angleStep = 2.0f * M_PI / N;
-
-    const GLfloat colors[6][3] = 
-    {
-        {1.0f, 0.0f, 0.0f}, // Czerwony
-        {0.0f, 1.0f, 0.0f}, // Zielony
-        {0.0f, 0.0f, 1.0f}, // Niebieski
-        {1.0f, 1.0f, 0.0f}, // ¯ó³ty
-        {1.0f, 0.0f, 1.0f}, // Ró¿owy
-        {0.0f, 1.0f, 1.0f}  // Cyjan
-    };
-
-    for (std::size_t i = 0; i < N; i++)
-    {
-        float alpha = i * angleStep;
-        float x = r * cos(alpha);
-        float y = r * sin(alpha);
-
-        vertices[index++] = x;    // x
-        vertices[index++] = y;    // y
-        vertices[index++] = z;    // z
-
-        // Przypisanie koloru na podstawie indeksu wierzcho³ka
-        const GLfloat* color = colors[i % 6];
-        vertices[index++] = color[0]; // r
-        vertices[index++] = color[1]; // g
-        vertices[index++] = color[2]; // b
-    }
-
-    // Dodanie ostatniego wierzcho³ka, aby zamkn¹æ wielok¹t (ten sam co pierwszy wierzcho³ek)
-    vertices[index++] = vertices[6];
-    vertices[index++] = vertices[7];
-    vertices[index++] = vertices[8];
-    vertices[index++] = vertices[9];
-    vertices[index++] = vertices[10];
-    vertices[index++] = vertices[11];
-
-    return vertices;
 }
 
 void ustawKamereMysz(GLint uniView, float deltaTime, sf::Window& window) 
@@ -203,12 +226,6 @@ void ustawKamereKlawisze(GLint uniView, float deltaTime)
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::E))
         cameraPos -= cameraSpeed * cameraUp;
 
-    // Obrót wokó³ osi Y
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left))
-        yaw -= sensitivity * deltaTime * 50.0f; // Obrót w lewo
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right))
-        yaw += sensitivity * deltaTime * 50.0f; // Obrót w prawo
-
     // Aktualizacja kierunku frontu patrzenia
     glm::vec3 front;
     front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
@@ -231,7 +248,6 @@ int main()
     int points = 6;
     int oldPosY = 0;
     // CUBE POLYGON
-    Mode currentMode = CUBE;
     GLenum prymityw = GL_TRIANGLE_FAN;
 
     // Okno renderingu
@@ -251,14 +267,9 @@ int main()
     glDepthFunc(GL_LESS);
 
     // Utworzenie VAO i VBO dla wielok¹ta i szeœcianu (Vertex Array/Buffer Object)
-    GLuint vaoPolygon, vboPolygon, vaoCube, vboCube;
-    glGenVertexArrays(1, &vaoPolygon);
-    glGenBuffers(1, &vboPolygon);
+    GLuint vaoCube, vboCube;
     glGenVertexArrays(1, &vaoCube);
     glGenBuffers(1, &vboCube);
-
-    // Wygenerowanie pocz¹tkowego wielok¹ta
-    GLfloat* vertices = generatePolygon(points, 1.0f);
 
     unsigned int texture1;
     glGenTextures(1, &texture1);
@@ -287,47 +298,48 @@ int main()
     // Wierzcho³ki dla szeœcianu
     float verticesCube[] =
     {
-    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,  0.0f, 0.0f,
-    0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f,   1.0f, 0.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,    1.0f, 1.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,    1.0f, 1.0f,
-    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
-    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,  0.0f, 0.0f,
+    // x     y      z     nx    ny    nz    u     v 
+    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+     0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+     0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+     0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+    -0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
 
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,   0.0f, 0.0f,
-    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,    1.0f, 0.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.0f,     1.0f, 1.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.0f,     1.0f, 1.0f,
-    -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f,    0.0f, 1.0f,
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+    -0.5f, -0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+     0.5f, -0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+     0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+     0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+    -0.5f,  0.5f,  0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
 
-    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,   0.0f, 0.0f,
-    -0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,  1.0f, 0.0f,
+    -0.5f,  0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+    -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f,
     -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
     -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,  0.0f, 1.0f,
-    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+    -0.5f, -0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+    -0.5f,  0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
 
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,   0.0f, 0.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,  1.0f, 0.0f,
-    0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-    0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-    0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,  0.0f, 1.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+     0.5f,  0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+     0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+     0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+     0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+     0.5f, -0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+     0.5f,  0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
 
-    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,  0.0f, 0.0f,
-    0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 0.0f,   1.0f, 0.0f,
-    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,    1.0f, 1.0f,
-    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f,    1.0f, 1.0f,
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 0.0f,   0.0f, 1.0f,
-    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,  0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+     0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+     0.5f, -0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+     0.5f, -0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+    -0.5f, -0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
 
-    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,  0.0f, 0.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,   1.0f, 0.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,    1.0f, 1.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f,    1.0f, 1.0f,
-    -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 0.0f,   0.0f, 1.0f,
-    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,  0.0f, 0.0f
+    -0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+     0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+     0.5f,  0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+     0.5f,  0.5f,  0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+    -0.5f,  0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+    -0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f
     };
 
     // Przesy³anie wierzcho³ków szeœcianu do VBO
@@ -356,7 +368,32 @@ int main()
     // Pobieranie atrybutów dla pozycji i koloru
     GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
     GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
-    
+
+    // Atrybut normalnych
+    GLint NorAttrib = glGetAttribLocation(shaderProgram, "aNormal");
+    glEnableVertexAttribArray(NorAttrib);
+    glVertexAttribPointer(NorAttrib, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+
+    // Pozycja œwiat³a
+    glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
+    GLint uniLightPos = glGetUniformLocation(shaderProgram, "lightPos");
+    glUniform3fv(uniLightPos, 1, glm::value_ptr(lightPos));
+    glUniform1i(glGetUniformLocation(shaderProgram, "lightingType"), 0);
+    glUniform3f(glGetUniformLocation(shaderProgram, "lightDir"), -0.2f, -1.0f, -0.3f);
+
+    glUniform1i(glGetUniformLocation(shaderProgram, "lightingType"), 1);
+    glUniform3f(glGetUniformLocation(shaderProgram, "lightPos"), 1.2f, 1.0f, 2.0f);
+    glUniform1f(glGetUniformLocation(shaderProgram, "constant"), 1.0f);
+    glUniform1f(glGetUniformLocation(shaderProgram, "linear"), 0.09f);
+    glUniform1f(glGetUniformLocation(shaderProgram, "quadratic"), 0.032f);
+
+    glUniform1i(glGetUniformLocation(shaderProgram, "lightingType"), 2);
+    glUniform3f(glGetUniformLocation(shaderProgram, "lightPos"), cameraPos.x, cameraPos.y, cameraPos.z); // Reflektor w kamerze
+    glUniform3f(glGetUniformLocation(shaderProgram, "lightDir"), cameraFront.x, cameraFront.y, cameraFront.z);
+    glUniform1f(glGetUniformLocation(shaderProgram, "cutoff"), 12.5f);
+    glUniform1f(glGetUniformLocation(shaderProgram, "outerCutoff"), 15.0f);
+
+
     float cameraSpeed = 0.05f;
     float obrot = 0.0f;
 
@@ -370,10 +407,27 @@ int main()
     prymityw = GL_TRIANGLE_FAN;
     oldPosY = 0;
 
+    bool lightingEnabled = true;
+    int lightingType = 0;        // 0: Ambient, 1: Diffuse
+    float ambientStrength = 0.1f;
+    float diffuseStrength = 1.0f;
+
     GLint uniView = glGetUniformLocation(shaderProgram, "view");
 
     sf::Clock clock;
     float deltaTime; // przechowuje czas w sekundach jaki up³yn¹³ od ostatniego odœwie¿enia klatki
+
+    GLint uniLightingType = glGetUniformLocation(shaderProgram, "lightingType");
+    glUniform1i(uniLightingType, lightingType);
+
+    GLint uniAmbientStrength = glGetUniformLocation(shaderProgram, "ambientStrength");
+    glUniform1f(uniAmbientStrength, ambientStrength);
+
+    GLint uniDiffuseStrength = glGetUniformLocation(shaderProgram, "diffuseStrength");
+    glUniform1f(uniDiffuseStrength, diffuseStrength);
+
+    GLint uniLightingEnabled = glGetUniformLocation(shaderProgram, "lightingEnabled");
+
 
     while (running)
     {
@@ -402,70 +456,60 @@ int main()
                 {
                     running = false;
                 }
-                else if (windowEvent.key.code == sf::Keyboard::Space)
+
+                // W³¹czanie/wy³¹czanie œwiat³a
+                if (windowEvent.key.code == sf::Keyboard::Space) 
                 {
-                    currentMode = (currentMode == CUBE) ? POLYGON : CUBE;
+                    lightingEnabled = !lightingEnabled;
+                    glUniform1i(uniLightingEnabled, lightingEnabled);
+                    std::cout << (lightingEnabled ? "LIGHT ENABLED\n" : "LIGHT DISABLED\n");
+                }
+                // Zmiana mocy œwiat³a otoczenia
+                else if (windowEvent.key.code == sf::Keyboard::Up) 
+                {
+                    ambientStrength = std::min(ambientStrength + 0.1f, 5.0f);
+                    std::cout << "AMBIENT STRENGTH: " << ambientStrength << "\n";
+                    GLint uniAmbientStrength = glGetUniformLocation(shaderProgram, "ambientStrength");
+                    glUniform1f(uniAmbientStrength, ambientStrength);
+                }
+                else if (windowEvent.key.code == sf::Keyboard::Down) 
+                {
+                    ambientStrength = std::max(ambientStrength - 0.1f, 0.0f);
+                    std::cout << "AMBIENT STRENGTH: " << ambientStrength << "\n";
+                    GLint uniAmbientStrength = glGetUniformLocation(shaderProgram, "ambientStrength");
+                    glUniform1f(uniAmbientStrength, ambientStrength);
+                }
+                // Zmiana mocy œwiat³a kierunkowego
+                else if (windowEvent.key.code == sf::Keyboard::Right) 
+                {
+                    std::cout << "DIFFUSE STRENGTH: " << diffuseStrength << "\n";
+                    diffuseStrength = std::min(diffuseStrength + 0.1f, 5.0f);
+                    GLint uniDiffuseStrength = glGetUniformLocation(shaderProgram, "diffuseStrength");
+                    glUniform1f(uniDiffuseStrength, diffuseStrength);
+                }
+                else if (windowEvent.key.code == sf::Keyboard::Left)
+                {
+                    std::cout << "DIFFUSE STRENGTH: " << diffuseStrength << "\n";
+                    diffuseStrength = std::max(diffuseStrength - 0.1f, 0.0f);
+                    GLint uniDiffuseStrength = glGetUniformLocation(shaderProgram, "diffuseStrength");
+                    glUniform1f(uniDiffuseStrength, diffuseStrength);
+                }
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num1)) 
+                {
+                    std::cout << "LIGHTING TYPE: DIRECTIONAL\n";
+                    glUniform1i(glGetUniformLocation(shaderProgram, "lightingType"), 0); // Directional
+                }
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num2)) 
+                {
+                    std::cout << "LIGHTING TYPE: POINT\n";
+                    glUniform1i(glGetUniformLocation(shaderProgram, "lightingType"), 1); // Point
+                }
+                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Num3)) 
+                {
+                    std::cout << "LIGHTING TYPE: SPOTLIGHT\n";
+                    glUniform1i(glGetUniformLocation(shaderProgram, "lightingType"), 2); // Spotlight
                 }
 
-                if (currentMode == POLYGON)
-                {
-                    switch (windowEvent.key.code)
-                    {
-                    case sf::Keyboard::Num1:
-                        prymityw = GL_POINTS;
-                        break;
-                    case sf::Keyboard::Num2:
-                        prymityw = GL_LINES;
-                        break;
-                    case sf::Keyboard::Num3:
-                        prymityw = GL_LINE_STRIP;
-                        break;
-                    case sf::Keyboard::Num4:
-                        prymityw = GL_LINE_LOOP;
-                        break;
-                    case sf::Keyboard::Num5:
-                        prymityw = GL_TRIANGLES;
-                        break;
-                    case sf::Keyboard::Num6:
-                        prymityw = GL_TRIANGLE_STRIP;
-                        break;
-                    case sf::Keyboard::Num7:
-                        prymityw = GL_TRIANGLE_FAN;
-                        break;
-                    case sf::Keyboard::Num8:
-                        prymityw = GL_QUADS;
-                        break;
-                    case sf::Keyboard::Num9:
-                        prymityw = GL_POLYGON;
-                        break;
-                    default:
-                        break;
-                    }
-                }
-                else if (currentMode == CUBE)
-                {
-
-                }
-            }
-
-            else if (windowEvent.type == sf::Event::MouseMoved && currentMode == POLYGON)
-            {
-                if (windowEvent.mouseMove.y > oldPosY) 
-                {
-                    points = std::min(points + 1, 20);
-                }
-                else if (windowEvent.mouseMove.y < oldPosY) 
-                {
-                    points = std::max(points - 1, 3);
-                }
-
-                oldPosY = windowEvent.mouseMove.y;
-                delete[] vertices;
-                vertices = generatePolygon(points, 1.0f);
-
-                glBindVertexArray(vaoPolygon);
-                glBindBuffer(GL_ARRAY_BUFFER, vboPolygon);
-                glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * (points + 2) * 8, vertices, GL_STATIC_DRAW);
             }
         }
 
@@ -480,8 +524,6 @@ int main()
         ustawKamereMysz(uniView, deltaTime, window); // Ustawienie widoku kamery na podstawie ruchu myszy
         ustawKamereKlawisze(uniView, deltaTime);     // Obs³uga klawiszy do poruszania siê
 
-        if (currentMode == CUBE) 
-        {
             // Macierz modelu                                                              x     y     z
             glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(obrot), glm::vec3(0.0f, 1.0f, 0.0f));
             
@@ -507,30 +549,6 @@ int main()
             // Renderowanie szeœcianu jako zbiór trójk¹tów
             glBindTexture(GL_TEXTURE_2D, texture1);
             glDrawArrays(GL_TRIANGLES, 0, 36);
-        }
-        else if (currentMode == POLYGON) 
-        {
-            // Maicerz modelu (jednostkowa)
-            glm::mat4 model = glm::mat4(1.0f);
-
-            // Wys³anie do shadera
-            GLint uniTrans = glGetUniformLocation(shaderProgram, "model");
-            glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
-
-            // Ustawienie VAO
-            glBindVertexArray(vaoPolygon);
-
-            // W³¹czenie atrybutu pozycji wierzcho³ka
-            glEnableVertexAttribArray(posAttrib);
-            glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), 0);
-
-            // W³¹czenie atrybutu koloru
-            glEnableVertexAttribArray(colAttrib);
-            glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
-
-            // Renderowanie wielok¹ta w zadanym trybie
-            glDrawArrays(prymityw, 0, points + 2);
-        }
 
         window.display();
     }
@@ -539,10 +557,7 @@ int main()
     glDeleteShader(fragmentShader);
     glDeleteShader(vertexShader);
     glDeleteBuffers(1, &vboCube);
-    glDeleteBuffers(1, &vboPolygon);
     glDeleteVertexArrays(1, &vaoCube);
-    glDeleteVertexArrays(1, &vaoPolygon);
-    delete[] vertices;
     window.close();
     return 0;
 }
