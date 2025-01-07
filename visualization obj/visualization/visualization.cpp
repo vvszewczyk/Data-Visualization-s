@@ -23,7 +23,7 @@ float sensitivity = 0.1f;
 float lastX = 400, lastY = 300;
 bool firstMouse = true;
 
-// Funkcja do sprawdzania b³êdów shaderów
+// Sprawdzanie b³êdów shaderów
 bool checkShaders(GLuint shader, const std::string& type)
 {
     GLint status;
@@ -44,7 +44,7 @@ bool checkShaders(GLuint shader, const std::string& type)
     }
 }
 
-// Funkcja do sprawdzania b³êdów OpenGL
+// Sprawdzanie b³êdów OpenGL
 void checkGLErrors(const std::string& context) 
 {
     GLenum err;
@@ -54,7 +54,7 @@ void checkGLErrors(const std::string& context)
     }
 }
 
-// Funkcje ustawiaj¹ce kamerê
+// Ustawianie kamery/myszki
 void setCameraMouse(GLint uniView, float deltaTime, sf::Window& window)
 {
     sf::Vector2i localPosition = sf::Mouse::getPosition(window);
@@ -114,6 +114,7 @@ void setCameraKeys(float deltaTime)
         cameraPos -= cameraSpeed * cameraUp;
 }
 
+// Struktura wierzcho³ka
 struct Vertex 
 {
     glm::vec3 position;
@@ -121,6 +122,7 @@ struct Vertex
     glm::vec2 texCoord;
 };
 
+// Wczytywanie obiektów z plików obj
 bool loadObj(const std::string& filePath, std::vector<Vertex>& vertices, std::vector<unsigned int>& indices)
 {
     std::ifstream file(filePath);
@@ -228,6 +230,7 @@ bool loadObj(const std::string& filePath, std::vector<Vertex>& vertices, std::ve
     return true;
 }
 
+// Ustawianie koloru obj
 void setObjectColor(GLuint shaderProgram, GLint uniObjectColor, float r, float g, float b, float a) 
 {
     if (uniObjectColor != -1) 
@@ -240,6 +243,7 @@ void setObjectColor(GLuint shaderProgram, GLint uniObjectColor, float r, float g
     }
 }
 
+// Wczytywanie tekstury
 GLuint loadTexture(const char* filepath)
 {
     GLuint textureID;
@@ -290,6 +294,7 @@ int main()
     settings.minorVersion = 2;
     settings.attributeFlags = sf::ContextSettings::Core;
 
+
     // Okno renderingu
     sf::Window window(sf::VideoMode(800, 600, 32), "OpenGL", sf::Style::Titlebar | sf::Style::Close, settings);
     window.setFramerateLimit(60);
@@ -300,7 +305,7 @@ int main()
     GLenum glewStatus = glewInit();
     if (glewStatus != GLEW_OK) 
     {
-        std::cerr << "GLEW Initialization failed: " << glewGetErrorString(glewStatus) << std::endl;
+        std::cerr << "GLEW init failed: " << glewGetErrorString(glewStatus) << std::endl;
         return -1;
     }
 
@@ -313,7 +318,6 @@ int main()
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glDisable(GL_CULL_FACE); // Wy³¹czenie culling
-
 
     // Kompilacja shaderów
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -368,7 +372,7 @@ int main()
     glUseProgram(shaderProgram);
     glUniform1i(glGetUniformLocation(shaderProgram, "texture1"), 0);
 
-    // Pobierz lokalizacjê uniformów
+    // Lokalizacja uniformów
     GLint uniModel = glGetUniformLocation(shaderProgram, "model");
     GLint uniView = glGetUniformLocation(shaderProgram, "view");
     GLint uniProj = glGetUniformLocation(shaderProgram, "proj");
@@ -380,7 +384,7 @@ int main()
         std::cerr << "Warning: 'objectColor' uniform not found." << std::endl;
     }
 
-    // Za³aduj modele
+    // Wczytywanie modeli
     std::vector<Vertex> chairVertices;
     std::vector<unsigned int> chairIndices;
 
@@ -454,11 +458,11 @@ int main()
     glBindVertexArray(0);
     checkGLErrors("After setting up VAO Table");
 
-    // Ustaw macierz projekcji
+    // Macierz projekcji
     glm::mat4 proj = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
     glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
 
-    // Ustaw pocz¹tkow¹ macierz widoku
+    // Pocz¹tkowa macierz widoku
     glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
     glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
@@ -466,8 +470,9 @@ int main()
 
     bool running = true;
 
+
     sf::Clock clock;
-    float deltaTime; // przechowuje czas w sekundach jaki up³yn¹³ od ostatniego odœwie¿enia klatki
+    float deltaTime; // Przechowuje czas w sekundach jaki up³yn¹³ od ostatniego odœwie¿enia klatki
 
     while (running)
     {
@@ -521,11 +526,10 @@ int main()
         {
             glBindTexture(GL_TEXTURE_2D, 0); // Odwi¹zanie tekstury
             glUniform1i(uniUseTexture, GL_FALSE);
-            // Ustaw kolor krzes³a na czerwony
-            glUniform4f(uniObjectColor, 1.0f, 0.0f, 0.0f, 1.0f);
+            glUniform4f(uniObjectColor, 1.0f, 0.0f, 0.0f, 1.0f); // Czerwony
         }
 
-        // Ustaw macierz modelu dla krzes³a
+        // Macierz modelu dla krzes³a
         glm::mat4 chairModel = glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, 0.0f, -5.0f));
         glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(chairModel));
 
@@ -546,8 +550,7 @@ int main()
         {
             glBindTexture(GL_TEXTURE_2D, 0);
             glUniform1i(uniUseTexture, GL_FALSE);
-            // Ustaw kolor sto³u na ¿ó³ty
-            glUniform4f(uniObjectColor, 1.0f, 1.0f, 0.0f, 1.0f);
+            glUniform4f(uniObjectColor, 1.0f, 1.0f, 0.0f, 1.0f); // ¯ó³ty
         }
 
         // Ustaw macierz modelu dla sto³u
@@ -563,7 +566,6 @@ int main()
         window.display();
     }
 
-    // Sprz¹tanie
     glDeleteProgram(shaderProgram);
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
